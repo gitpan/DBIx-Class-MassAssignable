@@ -6,7 +6,7 @@ use warnings;
 use base qw(DBIx::Class);
 use Carp qw/croak carp/;
 
-our $VERSION = '0.01';
+our $VERSION = '0.03';
 
 __PACKAGE__->mk_group_accessors('inherited', qw/
         attr_accessible
@@ -35,14 +35,16 @@ sub set_inflated_columns {
 sub _sanitize_mass_assignment {
   my $self = shift;
   my $columns = shift;
+  my $disable_warnings = shift; 
 
-  $self->_sanitize_attr_accessible($columns);
-  $self->_sanitize_attr_protected($columns);
+  $self->_sanitize_attr_accessible($columns, $disable_warnings);
+  $self->_sanitize_attr_protected($columns, $disable_warnings);
 }
 
 sub _sanitize_attr_accessible {
   my $self = shift;
   my $columns = shift;
+  my $disable_warnings = shift;   
 
   return unless defined $self->attr_accessible;
   croak "attr_accessible must be passed an array ref" unless ref($self->attr_accessible) eq "ARRAY";
@@ -50,7 +52,7 @@ sub _sanitize_attr_accessible {
   my %accessible = map { $_ => 1 } @{$self->attr_accessible} ;
   foreach my $key( keys %$columns ) {
     unless($accessible{$key}) {
-      carp "Attempted to mass assign none whitelisted value $key";
+      carp "Attempted to mass assign none whitelisted value $key" unless $disable_warnings;
       delete $columns->{$key} ;
     }
   }
@@ -60,20 +62,30 @@ sub _sanitize_attr_accessible {
 sub _sanitize_attr_protected {
   my $self = shift;
   my $columns = shift;
+  my $disable_warnings = shift;   
 
   return unless defined $self->attr_protected;
-
-  croak "attr_protected must be passed an array ref" unless ref($self->attr_accessible) eq "ARRAY";
+  croak "attr_protected must be passed an array ref" unless ref($self->attr_protected) eq "ARRAY";
+  
   my %protected = map { $_ => 1 } @{$self->attr_protected};
   foreach my $key( keys %$columns ) {
     if($protected{$key}) {
-      carp "Attempted to mass assign blacklisted value $key";
+      carp "Attempted to mass assign blacklisted value $key"  unless $disable_warnings;
       delete $columns->{$key} ;
     }
   }
   
 }
 
+sub mass_assignable_columns {
+  my $self = shift;
+
+  my %columns = map { $_ => 1 } ($self->columns());
+  $self->_sanitize_mass_assignment(\%columns, 1);
+  my @columns = keys %columns;
+  return @columns if wantarray;
+  return \@columns;
+}
 
 1;
 __END__
@@ -88,6 +100,9 @@ DBIx::Class::MassAssignable - use set_columns in DBIx::Class safely in a web app
   __PACKAGE__->load_components(qw/ MassAssignable /);
   __PACKAGE__->attr_accessible([qw( post_title post_content )]);
   __PACKAGE__->attr_protected([qw( is_admin )]);
+
+  #Get a list of mass_assignable_columns
+  $row->mass_assignable_columns()
 
 =head1 DESCRIPTION
 
